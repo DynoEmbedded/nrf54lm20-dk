@@ -1,0 +1,19 @@
+[package]
+name = "pdm-capture"
+version = "0.1.0"
+edition = "2021"
+description = "Host tool: flash the PDM-MIC firmware, then record the RTT PCM stream to a .wav"
+
+# Independent of the firmware workspace one level up (different build target).
+[workspace]
+
+[[bin]]
+name = "capture"
+path = "src/main.rs"
+
+[dependencies]
+probe-rs = "0.31"
+hound = "3.5"
+anyhow = "1"
+ctrlc = "3"
+object = "0.36"

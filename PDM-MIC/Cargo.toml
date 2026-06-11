@@ -1,0 +1,32 @@
+[package]
+name = "nrf54lm20-pdm-mic"
+version = "0.1.0"
+edition = "2021"
+description = "Bare-metal Rust PDM MEMS microphone capture on the nRF54LM20-DK, streamed to a host over RTT"
+
+# This is its own workspace so the host/ capture tool (which builds for the host
+# target) is not pulled into the embedded build.
+[workspace]
+
+[features]
+# Latch the mono sample on the falling PDM_CLK edge instead of the default rising.
+# Try this if audio is exact-zero / silent (mic drives data on the other phase).
+edge-falling = []
+# Digital gain above the default 0 dB (hardware range -20..+20 dB in 0.5 dB
+# steps). If both are enabled, the higher wins.
+gain-10db = []
+gain-20db = []
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+cortex-m-rt = "0.7"
+panic-halt = "1.0"
+rtt-target = "0.6"
+
+# Optimize even in dev: the PDM double-buffer loop must keep up with EasyDMA.
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+opt-level = "s"
+lto = true

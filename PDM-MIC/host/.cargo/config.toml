@@ -1,0 +1,6 @@
+# This crate builds for the HOST, not the embedded target. The parent
+# (../.cargo/config.toml) defaults `build.target` to thumbv8m for the firmware;
+# the nearest config wins, so we pin the host triple here to override it.
+# Change this if you build on a non-Linux/x86_64 machine (or pass --target).
+[build]
+target = "x86_64-unknown-linux-gnu"
