@@ -1,0 +1,23 @@
+[package]
+name = "nrf54lm20-axon"
+version = "0.1.0"
+edition = "2021"
+description = "Bare-metal Rust access to the Axon NPU on the nRF54LM20B via FFI to Nordic's driver"
+
+[dependencies]
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+panic-halt = "1.0"
+libm = "0.2"
+
+[build-dependencies]
+cc = "1"
+bindgen = "0.70"
+
+# Optimize even in dev so the C driver / FFI behave like the real target.
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+opt-level = "s"
+lto = true

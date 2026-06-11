@@ -1,0 +1,13 @@
+.vscode
+/target
+
+# Vendored Nordic IP (LicenseRef-Nordic-5-Clause) -- do not commit.
+# Obtain from the Edge AI add-on: github.com/nrfconnect/sdk-edge-ai
+/vendor/lib/
+/vendor/src/
+/vendor/include/
+/tools/axon-compiler/
+
+# Model workspace (your .tflite inputs + generated headers/test vectors)
+/models/
+

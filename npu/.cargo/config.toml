@@ -1,0 +1,13 @@
+# Cortex-M33 with single-precision FPU (nRF54LM20B application core)
+[build]
+target = "thumbv8m.main-none-eabihf"
+
+[target.thumbv8m.main-none-eabihf]
+# cortex-m-rt provides link.x; memory.x is emitted to OUT_DIR by build.rs
+rustflags = ["-C", "link-arg=-Tlink.x"]
+# Adjust chip name: run `probe-rs chip list | grep -i 54l` to find the exact id.
+runner = "probe-rs run --chip nRF54LM20B"
+
+# bindgen needs libclang. The system one (llvm-18) rather than the esp toolchain's.
+[env]
+LIBCLANG_PATH = "/usr/lib/llvm-18/lib"
