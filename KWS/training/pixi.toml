@@ -1,0 +1,15 @@
+[workspace]
+name = "kws-training"
+channels = ["conda-forge"]
+platforms = ["linux-64"]
+
+[dependencies]
+python = "3.11.*"
+
+[pypi-dependencies]
+tensorflow = "==2.19.0"
+
+[tasks]
+prepare = "python prepare.py"
+train = "python train.py"
+convert = "python convert.py"

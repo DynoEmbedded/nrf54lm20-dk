@@ -1,0 +1,32 @@
+[package]
+name = "kws-firmware"
+version = "0.1.0"
+edition = "2021"
+description = "Keyword spotting on the nRF54LM20-DK: PDM mic -> MFCC on the M33 -> DS-CNN on the Axon NPU"
+
+# Standalone workspace: not part of any parent crate's build.
+[workspace]
+
+[dependencies]
+cortex-m = { version = "0.7", features = ["critical-section-single-core"] }
+# "device": we provide the device interrupt vector table ourselves (__INTERRUPTS
+# in main.rs) so the AXONS IRQ (86) has a real handler; without it cortex-m-rt
+# emits only 32 default vectors and IRQ 86 vectors into garbage.
+cortex-m-rt = { version = "0.7", features = ["device"] }
+panic-halt = "1.0"
+rtt-target = "0.6"
+libm = "0.2"
+microfft = "0.6"
+
+[build-dependencies]
+cc = "1"
+bindgen = "0.70"
+
+# Optimize even in dev: MFCC + inference must fit in the 20 ms PDM hop, and the
+# C driver / FFI should behave like the real target.
+[profile.dev]
+opt-level = "s"
+
+[profile.release]
+opt-level = "s"
+lto = true

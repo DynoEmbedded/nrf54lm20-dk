@@ -1,0 +1,7 @@
+__pycache__/
+training/data/
+training/out/
+training/.pixi/
+firmware/target/
+firmware/generated/
+firmware/vendor/

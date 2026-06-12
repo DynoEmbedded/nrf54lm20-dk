@@ -183,6 +183,41 @@ Both former TODOs are now resolved in src/platform.rs / memory.x.
   final ELF contains `model_hello_axon` + `cmd_buffer_hello_axon` (.rodata) and
   `nrf_axon_nn_model_infer_sync`, zero undefined symbols, bss += interlayer buffer.
 
+## Voice model (KWS) constraints, from the vendored compiler scripts
+
+- Supported NN ops (`tools/axon-compiler/scripts/utility/operator_options.py`,
+  `SupportedOperators`): CONV_2D, DEPTHWISE_CONV_2D (depth multiplier must be 1),
+  FULLY_CONNECTED, AVERAGE/MAX_POOL_2D, ADD, PAD, LEAKY_RELU, MEAN (spatial dims
+  only), CONCATENATION, STRIDED_SLICE, SPLIT_V, MUL. Pass-through:
+  QUANTIZE/DEQUANTIZE/TRANSPOSE/CALL_ONCE. Variable ops (VAR_HANDLE/READ/ASSIGN)
+  handled -> stateful/streaming models are possible. No standalone RELU: it must
+  be fused into the preceding conv/FC (the converter does this). SOFTMAX (op 25)
+  goes to CPU via `cpu_op_codes_list: {25: ...}` or is skipped
+  (`skip_softmax_op`) -> argmax on CPU instead.
+- Model inputs must be int8; float and uint8 inputs are rejected by
+  `axons_tflite_model_scan.py` (use it as a pre-flight check on any .tflite).
+- No FFT/audio-frontend ops -> MFCC/log-mel must be computed on the M33; the
+  firmware frontend must match the training frontend exactly.
+- Nordic's reference voice model is MLPerf Tiny KWS: DS-CNN, 49x10x1 MFCC input,
+  12 Speech Commands labels (`scripts/models/tinyml/kws/compiler_sample_kws_input.yaml`).
+  Its testing defaults use 120 KB interlayer / 180 KB psum (psum placed inside the
+  interlayer buffer) -- far above our 2048 B; size from the compiler's reported
+  `*_buffer_needed`, not the defaults.
+- Train/convert with tensorflow==2.19.0 (pin in `scripts/requirements.txt`,
+  same as the compile container) to avoid converter/op drift.
+
+## Hardware-validated platform layer lives in KWS/firmware
+
+The KWS sibling project ran this FFI stack on the DK first and hit four
+platform bugs that ALSO apply to this crate's src/platform.rs / memory.x:
+512K RAM declaration faults pre-main (top ~512 B is reserved; use 510K --
+fixed here), model inference is EVENT-mode only so the AXONS IRQ must be
+wired (vector table + NVIC unmask after driver_init), the engine must be
+power-cycled per inference (reservation shims), and a wedged engine survives
+soft reset (watchdog + boot ENABLE cycle). Port KWS/firmware/src/platform.rs
+and the __INTERRUPTS table from KWS/firmware/src/main.rs before running this
+crate on hardware. Details: ../KWS/NOTES.md.
+
 ## Toolchain / env state
 
 - Edge AI add-on v2.0 requires NCS **v3.3.0** (`west.yml` pins `nrf` @ v3.3.0).
