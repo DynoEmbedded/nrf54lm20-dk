@@ -30,9 +30,9 @@ yes, no, up, down, left, right, on, off, stop, go (+ silence / unknown).
     pixi run train                         # ~40 min CPU; writes out/kws_best.keras
     pixi run convert                       # out/kws.tflite + ../firmware/generated/testvec.rs
 
-    # Compile for the NPU (uses the npu project's containerized Axon compiler):
-    ../npu/tools/compile-model.sh $PWD/out/kws.tflite kws
-    cp ../npu/vendor/include/generated/nrf_axon_model_kws_.h ../firmware/generated/
+    # Compile for the NPU (uses the npu project's containerized Axon compiler;
+    # the workspace lands next to the .tflite, the header in firmware/generated/):
+    INSTALL_DIR=$PWD/../firmware/generated ../../npu/tools/compile-model.sh out/kws.tflite kws
 
     cd ../firmware
     cargo run                              # build, flash, stream RTT log

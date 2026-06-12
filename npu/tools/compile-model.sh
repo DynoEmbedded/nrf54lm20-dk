@@ -6,8 +6,12 @@
 # Usage:
 #   tools/compile-model.sh <model.tflite> <model_name> [interlayer_bytes] [psum_bytes]
 #
-# Produces vendor/include/generated/nrf_axon_model_<model_name>_.h, which build.rs
-# auto-detects, compiles, and links (enabling the `has_model` cfg).
+# The compile workspace (yaml, logs, outputs/) is created NEXT TO the input
+# .tflite, so model projects keep their own artifacts. The generated
+# nrf_axon_model_<model_name>_.h is installed into INSTALL_DIR (default: this
+# repo's vendor/include/generated/, where build.rs auto-detects, compiles and
+# links it, enabling the `has_model` cfg). E.g. for the KWS firmware:
+#   INSTALL_DIR=../KWS/firmware/generated tools/compile-model.sh ...
 #
 # The Axon Compiler runs in a python3.11 + tensorflow container. Engine defaults
 # to podman; override with CONTAINER_ENGINE=docker.
@@ -15,8 +19,7 @@ set -euo pipefail
 
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 compiler_dir="$here/tools/axon-compiler"
-work_dir="$here/models"
-gen_dir="$here/vendor/include/generated"
+gen_dir="${INSTALL_DIR:-$here/vendor/include/generated}"
 
 # Container layout expected by the Dockerfile / executor.
 compiler_root_dir="bin"
@@ -47,6 +50,8 @@ if [[ ! -f "$tflite_path" ]]; then
 	echo "error: tflite model not found: $tflite_path" >&2
 	exit 1
 fi
+# Workspace = the model's own directory (mounted into the container).
+work_dir="$(cd "$(dirname "$tflite_path")" && pwd)"
 
 # A snap-confined shell (e.g. VS Code's integrated terminal) redirects
 # XDG_DATA_HOME into the snap sandbox, which makes podman miss its real storage
@@ -105,6 +110,6 @@ if [[ ! -f "$header" ]]; then
 fi
 
 cp "$header" "$gen_dir/"
-echo "==> Installed $(basename "$header") -> vendor/include/generated/"
+echo "==> Installed $(basename "$header") -> $gen_dir/"
 echo "    Now: set INTERLAYER/PSUM_BUFFER_SIZE in build.rs + src/main.rs to the"
 echo "    model's *_buffer_needed if larger than current, then: cargo build"

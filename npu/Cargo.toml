@@ -6,7 +6,10 @@ description = "Bare-metal Rust access to the Axon NPU on the nRF54LM20B via FFI 
 
 [dependencies]
 cortex-m = "0.7"
-cortex-m-rt = "0.7"
+# "device": we provide the device interrupt vector table ourselves (__INTERRUPTS
+# in main.rs) so the AXONS IRQ (86) has a real handler; without it cortex-m-rt
+# emits only 32 default vectors and IRQ 86 vectors into garbage.
+cortex-m-rt = { version = "0.7", features = ["device"] }
 panic-halt = "1.0"
 libm = "0.2"
 

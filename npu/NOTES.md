@@ -171,6 +171,11 @@ Both former TODOs are now resolved in src/platform.rs / memory.x.
   copying a model already in models/ onto itself (cp same-file) -> guard added.
 - The bundled sample yamls reference `.tflite` files (e.g. `kws_ref_model.tflite`)
   that are not shipped, so they can't be compiled as-is; bring your own model.
+- Later change: the compile workspace is now created NEXT TO the input
+  .tflite (not in a models/ dir here), and the header install dir is
+  overridable via INSTALL_DIR. Model training/generation lives in the KWS
+  project (the sine generator moved to ../KWS/training/examples/); this
+  directory holds only NPU access + the compiler toolchain.
 - The generated header is NOT self-contained: it relies on the includer for the
   Axon headers + `<assert.h>` (static_assert) + `<stddef.h>` (NULL), and the
   `NRF_AXON_INTERLAYER_BUFFER_SIZE` macro (a static_assert checks it). So build.rs
@@ -183,7 +188,7 @@ Both former TODOs are now resolved in src/platform.rs / memory.x.
   final ELF contains `model_hello_axon` + `cmd_buffer_hello_axon` (.rodata) and
   `nrf_axon_nn_model_infer_sync`, zero undefined symbols, bss += interlayer buffer.
 
-## Voice model (KWS) constraints, from the vendored compiler scripts
+## Axon compiler model constraints, from the vendored compiler scripts
 
 - Supported NN ops (`tools/axon-compiler/scripts/utility/operator_options.py`,
   `SupportedOperators`): CONV_2D, DEPTHWISE_CONV_2D (depth multiplier must be 1),
@@ -206,17 +211,20 @@ Both former TODOs are now resolved in src/platform.rs / memory.x.
 - Train/convert with tensorflow==2.19.0 (pin in `scripts/requirements.txt`,
   same as the compile container) to avoid converter/op drift.
 
-## Hardware-validated platform layer lives in KWS/firmware
+## Platform layer is hardware-validated (ported back from KWS)
 
 The KWS sibling project ran this FFI stack on the DK first and hit four
-platform bugs that ALSO apply to this crate's src/platform.rs / memory.x:
-512K RAM declaration faults pre-main (top ~512 B is reserved; use 510K --
-fixed here), model inference is EVENT-mode only so the AXONS IRQ must be
-wired (vector table + NVIC unmask after driver_init), the engine must be
-power-cycled per inference (reservation shims), and a wedged engine survives
-soft reset (watchdog + boot ENABLE cycle). Port KWS/firmware/src/platform.rs
-and the __INTERRUPTS table from KWS/firmware/src/main.rs before running this
-crate on hardware. Details: ../KWS/NOTES.md.
+platform bugs; all are now fixed HERE as well: memory.x declares 510K (the
+top ~512 B of RAM are reserved and bus-fault -- a 512K declaration faults on
+the first stack push, pre-main), src/platform.rs is the validated copy from
+KWS/firmware (NVIC unmask after driver_init, polling fallback in the wait
+shim, refcounted per-inference power cycling in the reservation shims), and
+main.rs provides the __INTERRUPTS vector table for the AXONS IRQ (86) with
+build.rs emitting the device.x that cortex-m-rt's "device" feature expects.
+NOT ported: the SysTick inference watchdog (KWS/firmware/src/main.rs) -- a
+session killed mid-inference can wedge the engine across a soft reset and
+hang the next first inference; for this demo crate, power-cycle the board or
+reflash. Full bring-up story: ../KWS/NOTES.md.
 
 ## Toolchain / env state
 

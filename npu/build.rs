@@ -33,6 +33,13 @@ fn main() {
 
     // Make memory.x available to the linker (cortex-m-rt's link.x includes it).
     std::fs::copy("memory.x", out.join("memory.x")).unwrap();
+    // cortex-m-rt's "device" feature INCLUDEs a device.x (normally from a PAC).
+    // Our vector table in main.rs is self-contained, so an empty one is fine.
+    std::fs::write(
+        out.join("device.x"),
+        "/* interrupt vectors resolved via __INTERRUPTS in src/main.rs */\n",
+    )
+    .unwrap();
     println!("cargo:rustc-link-search={}", out.display());
     println!("cargo:rerun-if-changed=memory.x");
 

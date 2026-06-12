@@ -45,17 +45,25 @@ Edge AI add-on (github.com/nrfconnect/sdk-edge-ai, branch matching NCS v3.3.0):
 
     cargo build            # compiles + links the full FFI graph
 
-The current `main()` powers on the NPU and pins the inference API as a link anchor.
+With the bundled sine model linked, `main()` runs one inference at boot. There
+is no RTT in this demo; progress and the result are exposed in the
+`DEBUG_STAGE` marker at the start of RAM, readable over SWD:
 
-## Before running on hardware — two values to confirm
+    probe-rs read --chip nRF54LM20B --chip-description-path targets/nRF54LM20B.yaml b32 0x20000000 2
+    # [0] = 3 on success (init/validate rc in bits 8+ otherwise)
+    # [1] = f32 bits of the dequantized result; sin(pi/2) -> 0x3f7e2f9e (~0.993,
+    #       int8-max saturation)
 
-1. **AXONS base address** — `src/platform.rs::AXON_BASE_ADDR` is a placeholder.
-   Confirm from the nRF54LM20B product specification / MDK (`NRF_AXONS_BASE`); on
-   Zephyr it is the devicetree `&axon` node `reg`. `ENABLE` is at `base + 0x400`.
-2. **RRAM standby** — ensure RRAM stays powered during inference (the engine reads
-   model constants from it). Zephyr votes via `nrf_sys_event_register`; on bare
-   metal, don't power-gate RRAM, or replicate the POWER/MEMORY write in
-   `platform::init`. See the TODO there.
+Verified on the DK: deterministic 0x3f7e2f9e across runs.
+
+## Hardware status
+
+The platform layer is hardware-validated (first brought up in the sibling
+KWS project, then ported back here): AXONS base `0x50056000` confirmed, the
+completion IRQ (86) is wired via our own `__INTERRUPTS` vector table + NVIC
+unmask after `driver_init`, and the reservation shims power-cycle the engine
+around every inference (wedged state survives soft resets otherwise). The
+full bring-up story, symptoms included, is in `../KWS/NOTES.md`.
 
 ## Adding a model
 
@@ -66,15 +74,18 @@ buffer + a `model_<name>` descriptor. The engine defaults to **podman**
 
     tools/compile-model.sh path/to/model.tflite my_model [interlayer_bytes] [psum_bytes]
 
+The compile workspace (yaml, logs, `outputs/`) is created next to the input
+`.tflite` -- model projects keep their own artifacts; this directory stays
+model-free. The generated header installs into `vendor/include/generated/` by
+default, where `build.rs` auto-detects it, generates a glue TU exposing
+`axon_active_model()`, compiles + links it, and enables the `has_model` cfg.
+Other firmware (e.g. the KWS project) redirects the install with
+`INSTALL_DIR=...`.
+
 Note: in VS Code's snap-confined terminal, `XDG_DATA_HOME` is redirected into the
 snap sandbox and podman reports a "database configuration mismatch". The script
 auto-corrects this; if you run podman manually there, prefix with
 `XDG_DATA_HOME=$HOME/.local/share`.
-
-This drops `nrf_axon_model_my_model_.h` into `vendor/include/generated/`.
-`build.rs` then auto-detects it, generates a glue TU exposing
-`axon_active_model()`, compiles + links it, and enables the `has_model` cfg, so
-`src/main.rs::run_inference` runs against it. No manual wiring.
 
 If the model's `*_buffer_needed` exceeds the current 2048 B, bump
 `INTERLAYER_BUFFER_SIZE`/`PSUM_BUFFER_SIZE` in `build.rs` and the matching
@@ -85,9 +96,13 @@ vendored under `vendor/include/generated/`, so a default build already links and
 runs a real inference. `run_inference` is shaped for a 1->1 scalar model; adapt
 the input quantization / output dequantization to your tensor dimensions (read
 them from the `model_<name>` descriptor at runtime, as the function shows).
+The training/conversion script for a sine model of the same shape lives at
+`../KWS/training/examples/gen_sine_model.py` (model training is the KWS
+project's domain; this directory is NPU access only).
 
 ## Flash
 
-    probe-rs chip list | grep -i 54l     # find the exact chip id
-    # set it in .cargo/config.toml runner, then:
     cargo run
+
+The runner supplies `targets/nRF54LM20B.yaml` (probe-rs ships no B target; the
+yaml is the A definition renamed, which is what physically flashes this DK).

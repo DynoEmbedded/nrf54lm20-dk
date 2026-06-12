@@ -21,6 +21,38 @@ pub static mut nrf_axon_interlayer_buffer: [u32; INTERLAYER_BUFFER_BYTES / 4] =
 #[no_mangle]
 pub static mut nrf_axon_psum_buffer: [u32; PSUM_BUFFER_BYTES / 4] = [0; PSUM_BUFFER_BYTES / 4];
 
+// --- Device interrupt vector table -------------------------------------------
+// No PAC crate is used, so we supply the table cortex-m-rt expects from one
+// (feature "device"). The driver blob runs model inference in EVENT mode and
+// enables the AXONS peripheral interrupt; without a real entry at position 86
+// the completion IRQ vectors into code bytes (INVSTATE UsageFault). Found on
+// hardware during the KWS bring-up; see ../KWS/NOTES.md.
+
+const AXONS_IRQN: usize = 86; // from the nRF54LM20B MDK
+
+unsafe extern "C" fn default_irq_handler() {
+    loop {
+        cortex_m::asm::bkpt();
+    }
+}
+
+unsafe extern "C" fn axons_irq_handler() {
+    // Documented ISR contract: clears the interrupt at its source and, if
+    // completion work is pending, cascades generate_driver_event ->
+    // process_driver_event -> generate_user_event (see platform.rs).
+    bindings::nrf_axon_handle_interrupt();
+}
+
+const fn vector_table() -> [unsafe extern "C" fn(); AXONS_IRQN + 1] {
+    let mut t = [default_irq_handler as unsafe extern "C" fn(); AXONS_IRQN + 1];
+    t[AXONS_IRQN] = axons_irq_handler;
+    t
+}
+
+#[no_mangle]
+#[link_section = ".vector_table.interrupts"]
+pub static __INTERRUPTS: [unsafe extern "C" fn(); AXONS_IRQN + 1] = vector_table();
+
 // Accessor emitted by build.rs's model glue when a compiled model is present in
 // vendor/include/generated/. Returns a pointer to the `model_<name>` descriptor.
 #[cfg(has_model)]
@@ -28,16 +60,33 @@ extern "C" {
     fn axon_active_model() -> *const bindings::nrf_axon_nn_compiled_model_s;
 }
 
+// Progress/result marker readable over SWD (no RTT in this demo):
+//   probe-rs read ... b32 <&DEBUG_STAGE> 2
+// [0]: 1 = init done, 2 = validate done, 3 = infer done; rc in bits 8..
+// [1]: last inference result, dequantized f32 bits (sin(pi/2) -> ~1.0).
+#[no_mangle]
+pub static mut DEBUG_STAGE: [u32; 2] = [0; 2];
+
+fn stage(s: u32) {
+    unsafe { core::ptr::write_volatile(core::ptr::addr_of_mut!(DEBUG_STAGE[0]), s) };
+}
+
 #[entry]
 fn main() -> ! {
     // Power on the NPU and initialize Nordic's driver.
     let rc = platform::init();
-    let _ = rc; // 0 == success; wire to RTT/UART logging to observe.
+    stage(1 | ((rc as u32) << 8)); // 0 == success
 
     #[cfg(has_model)]
     {
-        let _result = run_inference(1.5708); // pi/2; for hello_axon, sin -> ~1.0
-        let _ = _result;
+        let result = run_inference(1.5708); // pi/2; for hello_axon, sin -> ~1.0
+        unsafe {
+            core::ptr::write_volatile(
+                core::ptr::addr_of_mut!(DEBUG_STAGE[1]),
+                result.to_bits(),
+            )
+        };
+        stage(3);
     }
 
     #[cfg(not(has_model))]
@@ -62,7 +111,8 @@ fn main() -> ! {
 fn run_inference(sample: f32) -> f32 {
     unsafe {
         let model = axon_active_model();
-        let _ = bindings::nrf_axon_nn_model_validate(model); // 0 == ok
+        let vrc = bindings::nrf_axon_nn_model_validate(model); // 0 == ok
+        stage(2 | ((vrc.0 as u32) << 8));
 
         // Quantize the input using the model's input parameters:
         //   q = sample * (quant_mult / 2^quant_round) + quant_zp
